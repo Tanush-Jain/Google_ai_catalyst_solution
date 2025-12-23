@@ -1,0 +1,41 @@
+{
+  "name": "SentinelLLM - High Error Rate",
+  "type": "metric alert",
+  "query": "avg(last_5m):sum:sentinel_llm_errors{*} > 5",
+  "message": "ALERT: High error rate detected!\n\n{{#is_alert}}\nError rate is {{value}} errors/5min, which exceeds normal operating levels.\n\nThis could indicate:\n- LLM API issues or outages\n- Authentication/authorization problems\n- Input validation failures\n- Internal system errors\n- Network connectivity issues\n\nCurrent Status:\n- Error Rate: {{value}} errors/5min\n- Request Rate: {{requests_rate}} requests/sec\n- Success Rate: {{success_rate}} requests/sec\n- Service: {{service}}\n\nRecommended Actions:\n1. Check Vertex AI API status\n2. Review recent deployment changes\n3. Check authentication credentials\n4. Review error logs for patterns\n5. Consider implementing circuit breakers\n\nRequest ID: {{event.tags.request_id}}\nService: {{service}}\n{{/is_alert}}",
+  "tags": [
+    "service:sentinel-llm",
+    "alert_type:reliability",
+    "severity:high"
+  ],
+  "priority": "high",
+  "renotify_interval": 30,
+  "timeout_h": 0,
+  "include_no_data": false,
+  "no_data_timeframe": null,
+  "notify_no_data": false,
+  "renotify_evaluation_delay": 0,
+  "require_full_window": true,
+  "new_group_delay": 0,
+  "evaluation_delay": 0,
+  "id": "error_rate_monitor",
+  "silenced": {},
+  "options": {
+    "threshold_days": 0,
+    "include_no_data": false,
+    "no_data_timeframe": null,
+    "notify_no_data": false,
+    "renotify_interval": "30",
+    "timeout_h": 0,
+    "include_tags": true,
+    "require_full_window": true,
+    "new_host_delay": 0,
+    "evaluation_delay": 0,
+    "low_quiet_alerts": false,
+    "notify_audit": false,
+    "locked": false,
+    "include_all_custom_scorecard_metrics": true,
+    "custom_scorecard_slow_endpoints": true
+  }
+}
+

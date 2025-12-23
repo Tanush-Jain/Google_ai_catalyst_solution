@@ -1,0 +1,41 @@
+{
+  "name": "SentinelLLM - Prompt Injection Attempts",
+  "type": "metric alert",
+  "query": "avg(last_5m):sum:sentinel_llm_prompt_injection_detected{*} > 0",
+  "message": "ALERT: Prompt injection attempts detected!\n\n{{#is_alert}}\nDetected {{value}} prompt injection attempts in the last 5 minutes.\n\nThis could indicate:\n- Malicious users attempting to manipulate the LLM\n- Potential security breach attempts\n- Automated attacks or probing\n\nRecommended Actions:\n1. Review recent request logs for patterns\n2. Check for IP addresses with multiple attempts\n3. Consider implementing rate limiting\n4. Alert the security team if rate is high (>10/minute)\n\nRequest ID: {{event.tags.request_id}}\nService: {{service}}\n{{/is_alert}}",
+  "tags": [
+    "service:sentinel-llm",
+    "alert_type:security",
+    "severity:medium"
+  ],
+  "priority": "medium",
+  "renotify_interval": 60,
+  "timeout_h": 0,
+  "include_no_data": false,
+  "no_data_timeframe": null,
+  "notify_no_data": false,
+  "renotify_evaluation_delay": 0,
+  "require_full_window": true,
+  "new_group_delay": 0,
+  "evaluation_delay": 0,
+  "id": "prompt_injection_monitor",
+  "silenced": {},
+  "options": {
+    "threshold_days": 0,
+    "include_no_data": false,
+    "no_data_timeframe": null,
+    "notify_no_data": false,
+    "renotify_interval": "60",
+    "timeout_h": 0,
+    "include_tags": true,
+    "require_full_window": true,
+    "new_host_delay": 0,
+    "evaluation_delay": 0,
+    "low_quiet_alerts": false,
+    "notify_audit": false,
+    "locked": false,
+    "include_all_custom_scorecard_metrics": true,
+    "custom_scorecard_slow_endpoints": true
+  }
+}
+

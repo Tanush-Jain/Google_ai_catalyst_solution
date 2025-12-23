@@ -1,0 +1,212 @@
+<parameter name="content"># SentinelLLM Project Summary
+
+## 🎯 Project Overview
+
+**SentinelLLM** is a production-grade observability and incident response platform for Large Language Model (LLM) applications running on Google Cloud. It's built for the **AI Partner Catalyst Challenge (Datadog Track)**.
+
+### Core Purpose
+Transform LLM behavior into measurable telemetry and actionable incidents using Datadog, making LLM failures (hallucinations, prompt injection, latency regressions, cost explosions, data leakage) visible, measurable, and actionable.
+
+### Architecture
+```
+Client → SentinelLLM Gateway → Vertex AI / Gemini
+                      ↓
+               OpenTelemetry
+                      ↓
+                  Datadog
+```
+
+## 📁 Current Project Structure
+
+```
+Google_ai_catalyst_solution/
+├── README.md
+├── requirements.txt
+├── Dockerfile
+├── docker/
+│   └── Dockerfile
+├── infra/
+│   └── datadog/
+│       ├── dashboards/
+│       │   └── sentinel_llm_dashboard.json
+│       └── monitors/
+│           ├── cost_spike_monitor.json
+│           ├── error_rate_monitor.json
+│           ├── latency_monitor.json
+│           └── prompt_injection_monitor.json
+├── scripts/
+│   ├── simulate_attack.py
+│   └── simulate_cost_spike.py
+└── src/
+    ├── __init__.py (✅ FIXED - Added)
+    ├── main.py
+    ├── api/
+    │   ├── __init__.py (✅ FIXED - Added)
+    │   └── routes.py
+    ├── gateway/
+    │   ├── __init__.py (✅ FIXED - Added)
+    │   ├── app.py
+    │   ├── config.py
+    │   ├── llm_client.py
+    │   ├── security.py
+    │   └── telemetry.py
+    └── utils/
+        ├── __init__.py (✅ FIXED - Added)
+        └── token_counter.py
+```
+
+## 🔧 Tech Stack
+
+### Google Cloud
+- Vertex AI (Gemini)
+- Cloud Run / GKE
+- OpenTelemetry
+
+### Observability
+- Datadog APM
+- Datadog Logs
+- Datadog Metrics
+- Datadog Incident Management
+
+### Backend
+- Python (FastAPI)
+- Docker
+
+## 🚨 Key Observability Signals
+
+### Performance
+- LLM latency (p50 / p95)
+- Error rate
+- Retry count
+
+### Cost
+- Input / output token count
+- Estimated cost per request
+- Cost per minute
+
+### Quality
+- Response confidence score
+- Hallucination risk score
+
+### Security
+- Prompt injection detection
+- PII exposure detection
+- Jailbreak attempts
+
+## 🛠️ Current Status & Issues Fixed
+
+### ✅ PROBLEM IDENTIFIED
+**Issue**: `ModuleNotFoundError: No module named 'src'` when running:
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port 8080
+```
+
+**Root Cause**: Missing `__init__.py` files in Python packages
+
+### ✅ SOLUTION IMPLEMENTED
+
+**Fixed Python Package Structure** by adding missing `__init__.py` files:
+
+1. **src/__init__.py** - Package metadata and exports
+2. **src/api/__init__.py** - API package exports  
+3. **src/gateway/__init__.py** - Gateway package exports
+4. **src/utils/__init__.py** - Utils package exports
+
+### ✅ APPLICATION ENTRYPOINT
+The `src/main.py` is properly configured as production entry point that:
+- Imports FastAPI app from `src.api.routes`
+- Configures middleware, telemetry, and startup/shutdown handlers
+- Uses uvicorn with correct host/port configuration
+
+## 🚀 Correct Run Commands
+
+**From project root** (`/Users/wopseeion/Programming/Hackathons/Googe_catalyst/Google_ai_catalyst_solution`):
+
+```bash
+# Method 1: Using uvicorn directly
+uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload
+
+# Method 2: Using the main module
+python src/main.py
+
+# Method 3: With virtual environment
+source ../venv/bin/activate
+uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+## 📊 Key Files Analysis
+
+### src/main.py
+- Production FastAPI application entry point
+- Configures middleware (CORS, TrustedHost)
+- Sets up startup/shutdown event handlers
+- Initializes telemetry and OpenTelemetry instrumentation
+
+### src/api/routes.py
+- FastAPI routes and endpoints
+- LLM interaction endpoints
+- Health check endpoints
+- Request/response handling
+
+### src/gateway/
+- **config.py**: Configuration management
+- **telemetry.py**: OpenTelemetry instrumentation
+- **llm_client.py**: Vertex AI/Gemini integration
+- **security.py**: Security checks and validation
+
+### src/utils/
+- **token_counter.py**: Token counting and estimation
+
+## 🌍 Environment Requirements
+
+Required environment variables:
+```env
+GCP_PROJECT_ID=your_project_id
+VERTEX_LOCATION=us-central1
+DATADOG_API_KEY=your_datadog_api_key
+DATADOG_SITE=datadoghq.com
+GEMINI_MODEL=gemini-1.5-pro
+```
+
+## 🎯 Automated Incident Detection
+
+SentinelLLM defines Datadog detection rules for:
+- Prompt Injection Attempts
+- Cost Explosions
+- Latency Regressions
+- Hallucination Risk Spikes
+- Sensitive Data Leakage
+
+## 📦 Dependencies (requirements.txt)
+
+Key dependencies include:
+- FastAPI
+- uvicorn
+- google-cloud-aiplatform
+- opentelemetry-api
+- opentelemetry-sdk
+- ddtrace (Datadog)
+- python-dotenv
+- pydantic
+
+## 🚀 Next Steps / TODO
+
+1. **Test Application**: Verify the fixed imports work correctly
+2. **Environment Setup**: Configure required environment variables
+3. **Datadog Integration**: Set up Datadog dashboards and monitors
+4. **Google Cloud Deployment**: Deploy to Cloud Run or GKE
+5. **Testing**: Run simulation scripts for attack/cost spike detection
+
+## 🎥 Demo Capabilities
+
+The project includes simulation scripts:
+- `scripts/simulate_attack.py` - Simulates prompt injection attacks
+- `scripts/simulate_cost_spike.py` - Simulates cost explosions
+
+These trigger Datadog detection rules and generate incidents.
+
+---
+
+**Status**: Python packaging issues fixed, application ready for testing and deployment.
+**Last Updated**: Current session
+**Working Directory**: `/Users/wopseeion/Programming/Hackathons/Googe_catalyst/Google_ai_catalyst_solution`</parameter>

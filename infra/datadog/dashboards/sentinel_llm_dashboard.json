@@ -1,0 +1,306 @@
+{
+  "title": "SentinelLLM Dashboard",
+  "description": "Comprehensive monitoring dashboard for LLM observability and security",
+  "widgets": [
+    {
+      "id": 1,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "avg:sentinel_llm_request_latency{$service}",
+            "display_type": "line",
+            "style": {
+              "palette": "dogmania",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ],
+        "title": "LLM Request Latency",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_size": "auto",
+        "time": {
+          "live_span": "1h"
+        },
+        "yaxis": {
+          "label": "milliseconds",
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 6,
+        "height": 4
+      }
+    },
+    {
+      "id": 2,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_requests{$service}.as_rate()",
+            "display_type": "area",
+            "style": {
+              "palette": "cool",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ],
+        "title": "Request Rate",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_size": "auto",
+        "time": {
+          "live_span": "1h"
+        },
+        "yaxis": {
+          "label": "requests/sec",
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "width": 6,
+        "height": 4
+      }
+    },
+    {
+      "id": 3,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_tokens_input{$service}.as_rate()",
+            "display_type": "area",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          },
+          {
+            "q": "sum:sentinel_llm_tokens_output{$service}.as_rate()",
+            "display_type": "area",
+            "style": {
+              "palette": "green",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ],
+        "title": "Token Usage Rate",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_size": "auto",
+        "time": {
+          "live_span": "1h"
+        },
+        "yaxis": {
+          "label": "tokens/sec",
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 4,
+        "width": 6,
+        "height": 4
+      }
+    },
+    {
+      "id": 4,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_cost_estimate{$service}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "thick"
+            }
+          }
+        ],
+        "title": "Cost Rate",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_size": "auto",
+        "time": {
+          "live_span": "1h"
+        },
+        "yaxis": {
+          "label": "USD/sec",
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 4,
+        "width": 6,
+        "height": 4
+      }
+    },
+    {
+      "id": 5,
+      "definition": {
+        "type": "query_value",
+        "requests": [
+          {
+            "q": "avg:sentinel_llm_request_latency{$service}",
+            "aggregator": "avg"
+          }
+        ],
+        "title": "Average Latency",
+        "title_size": "16",
+        "title_align": "center",
+        "color_preference": "text",
+        "custom_unit": "ms",
+        "text_align": "center",
+        "precision": 2
+      },
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "width": 2,
+        "height": 2
+      }
+    },
+    {
+      "id": 6,
+      "definition": {
+        "type": "query_value",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_errors{$service}.as_rate()",
+            "aggregator": "sum"
+          }
+        ],
+        "title": "Error Rate",
+        "title_size": "16",
+        "title_align": "center",
+        "color_preference": "text",
+        "custom_unit": "errors/sec",
+        "text_align": "center",
+        "precision": 2
+      },
+      "layout": {
+        "x": 2,
+        "y": 8,
+        "width": 2,
+        "height": 2
+      }
+    },
+    {
+      "id": 7,
+      "definition": {
+        "type": "query_value",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_prompt_injection_detected{$service}.as_rate()",
+            "aggregator": "sum"
+          }
+        ],
+        "title": "Security Violations",
+        "title_size": "16",
+        "title_align": "center",
+        "color_preference": "text",
+        "custom_unit": "violations/sec",
+        "text_align": "center",
+        "precision": 2
+      },
+      "layout": {
+        "x": 4,
+        "y": 8,
+        "width": 2,
+        "height": 2
+      }
+    },
+    {
+      "id": 8,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:sentinel_llm_requests{$service}",
+            "display_type": "count",
+            "style": {
+              "palette": "blue",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ],
+        "title": "Total Requests",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": false,
+        "time": {
+          "live_span": "1h"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 8,
+        "width": 6,
+        "height": 2
+      }
+    },
+    {
+      "id": 9,
+      "definition": {
+        "type": "note",
+        "content": "# SentinelLLM Observability Dashboard\n\nThis dashboard provides comprehensive monitoring for:\n\n- **Performance**: Request latency and throughput\n- **Security**: Prompt injection detection and violations\n- **Cost**: Token usage and cost tracking\n- **Reliability**: Error rates and system health\n\nConfigure alerts for critical metrics using the monitors in this dashboard.",
+        "background_color": "blue",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "tick_pos": "50%",
+        "tick_edge": "left"
+      },
+      "layout": {
+        "x": 0,
+        "y": 10,
+        "width": 12,
+        "height": 3
+      }
+    }
+  ],
+  "layout_type": "ordered",
+  "is_read_only": false,
+  "notify_list": [],
+  "template_variables": [
+    {
+      "name": "service",
+      "default": "*",
+      "prefix": "service",
+      "available_values": []
+    }
+  ],
+  "template_variable_uses": [
+    {
+      "name": "service",
+      "filters": [
+        {
+          "name": "service",
+          "value": "$service"
+        }
+      ]
+    }
+  ]
+}
+

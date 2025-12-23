@@ -1,0 +1,41 @@
+{
+  "name": "SentinelLLM - Cost Spike Detection",
+  "type": "metric alert",
+  "query": "avg(last_15m):sum:sentinel_llm_cost_estimate{*} > 0.50",
+  "message": "ALERT: Unusual cost spike detected!\n\n{{#is_alert}}\nCost rate is {{value}} USD/15min, which exceeds normal operating levels.\n\nThis could indicate:\n- Unusual spike in LLM usage\n- Potential abuse or misuse\n- Configuration issues (wrong model, high token limits)\n- Potential cost optimization opportunities\n\nRecommended Actions:\n1. Check recent request patterns and user activity\n2. Review top users by cost in the last hour\n3. Verify model configuration and token limits\n4. Consider implementing per-user cost caps\n\nCurrent Metrics:\n- Cost Rate: {{value}} USD/15min\n- Request Rate: {{requests_rate}} requests/sec\n- Average Latency: {{latency}}ms\n\nRequest ID: {{event.tags.request_id}}\nService: {{service}}\n{{/is_alert}}",
+  "tags": [
+    "service:sentinel-llm",
+    "alert_type:cost",
+    "severity:high"
+  ],
+  "priority": "high",
+  "renotify_interval": 30,
+  "timeout_h": 0,
+  "include_no_data": false,
+  "no_data_timeframe": null,
+  "notify_no_data": false,
+  "renotify_evaluation_delay": 0,
+  "require_full_window": true,
+  "new_group_delay": 0,
+  "evaluation_delay": 0,
+  "id": "cost_spike_monitor",
+  "silenced": {},
+  "options": {
+    "threshold_days": 0,
+    "include_no_data": false,
+    "no_data_timeframe": null,
+    "notify_no_data": false,
+    "renotify_interval": "30",
+    "timeout_h": 0,
+    "include_tags": true,
+    "require_full_window": true,
+    "new_host_delay": 0,
+    "evaluation_delay": 0,
+    "low_quiet_alerts": false,
+    "notify_audit": false,
+    "locked": false,
+    "include_all_custom_scorecard_metrics": true,
+    "custom_scorecard_slow_endpoints": true
+  }
+}
+
