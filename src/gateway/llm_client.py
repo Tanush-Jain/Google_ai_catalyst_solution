@@ -1,16 +1,17 @@
 """
-LLM Client for Vertex AI Gemini integration with fault tolerance
+LLM Client for Vertex AI Gemini 2.0 integration
+CRITICAL: Uses Gemini 2.0 preview API - requires structured content input
 """
 
 import time
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from src.gateway.config import get_settings
 from src.utils.token_counter import estimate_token_count
 from src.gateway.telemetry import telemetry_manager
-from opentelemetry.trace import Status, StatusCode, get_current_span
+from opentelemetry.trace import Status, StatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,6 @@ class GeminiClient:
             "asia-northeast1", "asia-northeast2", "asia-northeast3", "asia-southeast1",
             "australia-southeast1", "australia-southeast2", "me-west1"
         }
-        self.model_fallback_order = [
-            "gemini-1.5-flash-002",
-            "gemini-1.0-pro"
-        ]
         self._initialize_client()
 
     def _validate_region(self, region: str) -> str:
@@ -53,79 +50,42 @@ class GeminiClient:
         logger.warning(f"Invalid region '{region}', defaulting to 'us-central1'")
         return "us-central1"
 
-    def _get_model_from_env(self) -> Optional[str]:
-        """Get model name from environment variable with fallback"""
-        env_model = getattr(self.settings, 'GEMINI_MODEL', None)
-        if env_model and env_model not in ["your_gemini_model", ""]:
-            logger.info(f"Using model from environment: {env_model}")
-            return env_model
-        
-        logger.warning("GEMINI_MODEL not set or invalid, using fallback model")
-        return self.model_fallback_order[0]  # gemini-1.5-flash-002
-
     def _initialize_client(self) -> None:
-        """Initialize Vertex AI Gemini with fault tolerance"""
-        try:
-            if self.settings.DATADOG_ENV in ["dev", "development"]:
-                logger.info("GeminiClient running in DEV mode (mock responses)")
-                self._initialized = False
-                return
+        """
+        Initialize Vertex AI Gemini 2.0.
+        CRITICAL: This must succeed or raise RuntimeError.
+        No mock mode. No fallback. No silent degradation.
+        """
+        import vertexai
+        from vertexai.preview.generative_models import GenerativeModel
 
-            import vertexai
-            from vertexai.generative_models import GenerativeModel
-            import google.api_core.exceptions as google_exceptions
+        # Validate and set region
+        region = self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1'))
+        project_id = self.settings.GCP_PROJECT_ID
+        model_name = getattr(self.settings, 'GEMINI_MODEL', None)
+        
+        if not project_id:
+            raise RuntimeError("GCP_PROJECT_ID is not set. Cannot initialize Vertex AI.")
+        
+        if not model_name:
+            raise RuntimeError("GEMINI_MODEL is not set. Cannot initialize Vertex AI.")
+        
+        logger.info(f"Initializing Vertex AI with project={project_id}, location={region}")
+        
+        # Initialize Vertex AI - FAIL HARD if this fails
+        vertexai.init(
+            project=project_id,
+            location=region,
+        )
+        logger.info("✅ Vertex AI initialized successfully")
 
-            # Validate and set region
-            region = self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1'))
-            
-            # Initialize Vertex AI
-            try:
-                vertexai.init(
-                    project=self.settings.GCP_PROJECT_ID,
-                    location=region,
-                )
-            except (google_exceptions.PermissionDenied, google_exceptions.FailedPrecondition) as e:
-                logger.error(f"Failed to initialize Vertex AI: {e}")
-                self._initialized = False
-                return
-
-            # Get model name with fallback
-            primary_model = self._get_model_from_env()
-            models_to_try = [primary_model] + [m for m in self.model_fallback_order if m != primary_model]
-
-            # Try models in order
-            for model_name in models_to_try:
-                try:
-                    logger.info(f"Attempting to initialize model: {model_name}")
-                    self.model = GenerativeModel(model_name)
-                    self.selected_model = model_name
-                    self._initialized = True
-                    logger.info(f"✅ Successfully initialized Gemini model: {model_name}")
-                    break
-                    
-                except google_exceptions.NotFound as e:
-                    logger.warning(f"Model {model_name} not found: {e}")
-                    continue
-                    
-                except google_exceptions.PermissionDenied as e:
-                    logger.warning(f"Access denied for model {model_name}: {e}")
-                    continue
-                    
-                except google_exceptions.FailedPrecondition as e:
-                    logger.warning(f"Precondition failed for model {model_name}: {e}")
-                    continue
-                    
-                except Exception as e:
-                    logger.error(f"Unexpected error with model {model_name}: {e}")
-                    continue
-
-            if not self._initialized:
-                logger.error("❌ Failed to initialize any Gemini model")
-                return
-
-        except Exception as e:
-            logger.error(f"Failed to initialize Gemini client: {e}")
-            self._initialized = False
+        # Initialize the model - Gemini 2.0 requires model_name= parameter
+        logger.info(f"Loading GenerativeModel: {model_name}")
+        self.model = GenerativeModel(model_name=model_name)
+        self.selected_model = model_name
+        self._initialized = True
+        
+        logger.info(f"✅ Gemini 2.0 initialized successfully: {model_name}")
 
     def generate(
         self,
@@ -133,35 +93,80 @@ class GeminiClient:
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
     ) -> LLMResponse:
+        """
+        Generate response using real Gemini 2.0.
+        CRITICAL: This ALWAYS calls Vertex AI. No mock mode.
+        If Gemini fails, this raises an exception.
+        Gemini 2.0 requires structured content input.
+        """
         start_time = time.time()
 
-        # DEV MODE (MOCK)
-        if self.settings.DATADOG_ENV in ["dev", "development"]:
-            time.sleep(0.2)  # simulate latency
-            response_text = "This is a mock Gemini response (DEV mode)."
+        # Assert initialization (fail fast if not initialized)
+        if not self._initialized or self.model is None:
+            raise RuntimeError("Gemini client not initialized. Application should have failed at startup.")
 
+        # Configure generation parameters
+        max_tokens = max_tokens or getattr(self.settings, 'MAX_TOKENS', 2048)
+        temperature = temperature or getattr(self.settings, 'TEMPERATURE', 0.7)
+        region = self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1'))
+
+        # Trace LLM Call with proper span attributes
+        with telemetry_manager.tracer.start_as_current_span("vertexai.generate_content") as span:
+            span.set_attribute("model_name", self.selected_model)
+            span.set_attribute("region", region)
+            span.set_attribute("max_tokens", max_tokens)
+            span.set_attribute("temperature", temperature)
+            span.set_attribute("prompt_length", len(prompt))
+            
+            # Gemini 2.0 requires structured content input
+            response = self.model.generate_content(
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [{"text": prompt}]
+                    }
+                ],
+                generation_config={
+                    "max_output_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+            )
+            span.set_status(Status(StatusCode.OK))
+            span.set_attribute("success", True)
+            
             latency_ms = (time.time() - start_time) * 1000
+            
+            # Gemini 2.0: response.text is the structured text accessor
+            if not hasattr(response, 'text') or not response.text:
+                raise RuntimeError("Gemini returned empty response")
+            
+            response_text = response.text
+
             input_tokens = estimate_token_count(prompt)
             output_tokens = estimate_token_count(response_text)
+            cost_estimate = self._calculate_cost_estimate(input_tokens, output_tokens)
 
-            # Record DEV metrics
+            # Record Success Metrics
             telemetry_manager.record_llm_metrics(
                 latency_ms=latency_ms,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                model="gemini-mock",
+                cost_estimate=cost_estimate,
+                model=self.selected_model,
                 status="success"
             )
 
-            # Structured logging
+            # Structured logging for success
             telemetry_manager.log_structured(
                 "INFO", 
-                "Mock LLM response generated",
-                model="gemini-mock",
+                "LLM request completed successfully",
+                model=self.selected_model,
+                region=region,
                 latency_ms=latency_ms,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                environment="development"
+                cost_estimate=cost_estimate,
+                success=True
             )
 
             return LLMResponse(
@@ -169,141 +174,8 @@ class GeminiClient:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 latency_ms=latency_ms,
-                cost_estimate=0.0,
-                model="gemini-mock",
-            )
-
-        # PROD MODE - Check Initialization
-        if not self._initialized:
-            latency_ms = (time.time() - start_time) * 1000
-            input_tokens = estimate_token_count(prompt)
-            
-            # Record Error Metrics
-            telemetry_manager.record_llm_metrics(
-                llm_failure=True,
-                error_type="initialization_failure",
-                latency_ms=latency_ms,
-                model="uninitialized",
-                status="error"
-            )
-
-            # Structured logging
-            telemetry_manager.log_structured(
-                "ERROR", 
-                "LLM client not initialized",
-                error_type="initialization_failure",
-                latency_ms=latency_ms,
-                model="uninitialized",
-                environment="production"
-            )
-
-            return LLMResponse(
-                text="Error: Vertex AI model not accessible for this project",
-                input_tokens=input_tokens,
-                output_tokens=0,
-                latency_ms=latency_ms,
-                cost_estimate=0.0,
-                model="error",
-            )
-
-        # PROD MODE (REAL GEMINI)
-        max_tokens = max_tokens or getattr(self.settings, 'MAX_TOKENS', 2048)
-        temperature = temperature or getattr(self.settings, 'TEMPERATURE', 0.7)
-        region = self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1'))
-
-        try:
-            # Trace LLM Call with proper span attributes
-            with telemetry_manager.tracer.start_as_current_span("vertexai.generate_content") as span:
-                span.set_attribute("model_name", self.selected_model)
-                span.set_attribute("region", region)
-                span.set_attribute("max_tokens", max_tokens)
-                span.set_attribute("temperature", temperature)
-                span.set_attribute("prompt_length", len(prompt))
-                
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config={
-                        "max_output_tokens": max_tokens,
-                        "temperature": temperature,
-                    },
-                )
-                span.set_status(Status(StatusCode.OK))
-                span.set_attribute("success", True)
-                
-                latency_ms = (time.time() - start_time) * 1000
-                response_text = response.text if hasattr(response, "text") else str(response)
-
-                input_tokens = estimate_token_count(prompt)
-                output_tokens = estimate_token_count(response_text)
-                cost_estimate = self._calculate_cost_estimate(input_tokens, output_tokens)
-
-                # Record Success Metrics
-                telemetry_manager.record_llm_metrics(
-                    latency_ms=latency_ms,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_estimate=cost_estimate,
-                    model=self.selected_model,
-                    status="success"
-                )
-
-                # Structured logging for success
-                telemetry_manager.log_structured(
-                    "INFO", 
-                    "LLM request completed successfully",
-                    model=self.selected_model,
-                    region=region,
-                    latency_ms=latency_ms,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_estimate=cost_estimate,
-                    success=True
-                )
-
-                return LLMResponse(
-                    text=response_text,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    latency_ms=latency_ms,
-                    cost_estimate=cost_estimate,
-                    model=self.selected_model,
-                )
-
-        except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            
-            # Graceful error response
-            latency_ms = (time.time() - start_time) * 1000
-            input_tokens = estimate_token_count(prompt)
-            
-            # Record Failure Metrics
-            telemetry_manager.record_llm_metrics(
-                llm_failure=True,
-                error_type=str(type(e).__name__),
-                latency_ms=latency_ms,
+                cost_estimate=cost_estimate,
                 model=self.selected_model,
-                status="error"
-            )
-
-            # Structured logging for error
-            telemetry_manager.log_structured(
-                "ERROR", 
-                "LLM request failed",
-                model=self.selected_model,
-                region=region,
-                latency_ms=latency_ms,
-                error_type=str(type(e).__name__),
-                error_message=str(e),
-                success=False
-            )
-
-            return LLMResponse(
-                text="Error: Vertex AI model not accessible for this project",
-                input_tokens=input_tokens,
-                output_tokens=0,
-                latency_ms=latency_ms,
-                cost_estimate=0.0,
-                model="error",
             )
 
     def _calculate_cost_estimate(self, input_tokens: int, output_tokens: int) -> float:
@@ -319,8 +191,8 @@ class GeminiClient:
     def health_check(self) -> Dict[str, Any]:
         return {
             "initialized": self._initialized,
-            "selected_model": self.selected_model if self._initialized else None,
-            "model": self.selected_model if self._initialized else "mock",
+            "selected_model": self.selected_model,
+            "model": self.selected_model,
             "region": self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1')),
         }
 

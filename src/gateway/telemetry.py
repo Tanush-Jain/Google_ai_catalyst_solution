@@ -48,42 +48,37 @@ class TelemetryManager:
 
         try:
             # ----------------------------
-            # OTLP EXPORTER CONFIG (for Collector)
+            # OTLP EXPORTER CONFIG (for Collector/Agent)
             # ----------------------------
-            otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-            otlp_traces_exporter = os.getenv("OTEL_TRACES_EXPORTER", "otlp")
-            otlp_metrics_exporter = os.getenv("OTEL_METRICS_EXPORTER", "otlp")
+            # Per OpenTelemetry spec: if OTEL_EXPORTER_OTLP_ENDPOINT is set, use OTLP exporter
+            # API keys are handled by the Agent/Collector, NOT the application
+            otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
             
             # Get service configuration from environment
             service_name = os.getenv("OTEL_SERVICE_NAME", "sentinel-llm")
-            resource_attrs_env = os.getenv("OTEL_RESOURCE_ATTRIBUTES", "env=development")
+            dd_env = os.getenv("DD_ENV", "development")
             
-            # Parse resource attributes
-            resource_attrs = {}
-            for attr in resource_attrs_env.split(","):
-                if "=" in attr:
-                    key, value = attr.split("=", 1)
-                    resource_attrs[key] = value
-            
-            service_env = resource_attrs.get("env", "development")
+            # Check if Datadog site is set for resource attributes
+            dd_site = os.getenv("DATADOG_SITE", "datadoghq.com")
 
-            if otlp_traces_exporter == "otlp" and otlp_metrics_exporter == "otlp":
-                # ✅ OTLP mode (Collector)
+            if otlp_endpoint:
+                # ✅ OTLP mode - endpoint is configured, use OTLP exporter
+                # No API key needed here - that's handled by the Agent/Collector
                 span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
                 metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint)
 
-                logger.info("Telemetry: OTLP mode (Collector endpoint enabled)")
+                logger.info("Telemetry: OTLP mode (exporting to Collector/Agent)")
                 logger.info(f"OTLP Endpoint: {otlp_endpoint}")
-                logger.info(f"Service: {service_name}, Environment: {service_env}")
+                logger.info(f"Service: {service_name}, Environment: {dd_env}")
             else:
-                # ✅ Fallback: console exporters
+                # ✅ Fallback: console exporters (no endpoint configured)
                 from opentelemetry.sdk.trace.export import ConsoleSpanExporter
                 from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
 
                 span_exporter = ConsoleSpanExporter()
                 metric_exporter = ConsoleMetricExporter()
 
-                logger.info("Telemetry: Console mode (fallback exporters enabled)")
+                logger.info("Telemetry: Console mode (no OTLP endpoint configured)")
 
             # ----------------------------
             # RESOURCE ATTRIBUTES
@@ -91,7 +86,7 @@ class TelemetryManager:
             resource = Resource.create({
                 ResourceAttributes.SERVICE_NAME: service_name,
                 ResourceAttributes.SERVICE_VERSION: "1.0.0",
-                ResourceAttributes.DEPLOYMENT_ENVIRONMENT: service_env,
+                ResourceAttributes.DEPLOYMENT_ENVIRONMENT: dd_env,
                 ResourceAttributes.TELEMETRY_SDK_NAME: "opentelemetry-python",
                 ResourceAttributes.TELEMETRY_SDK_VERSION: "1.21.0",
             })
