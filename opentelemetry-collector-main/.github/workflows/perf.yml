@@ -1,0 +1,43 @@
+name: Automation - Performance
+
+on:
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  runperf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: oldstable
+          cache: false
+
+      - name: Cache Go
+        id: go-cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          path: |
+            ~/go/bin
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Run benchmark
+        run: make gobenchmark
+
+      # Disabling until fine-grained permissions token enabled for the
+      # repository
+      #- name: Store benchmark result
+      #  uses: benchmark-action/github-action-benchmark@v1
+      #  with:
+      #    tool: 'go'
+      #    output-file-path: benchmarks.txt
+      #    gh-pages-branch: gh-pages
+      #    auto-push: true
+      #    github-token: ${{ secrets.GITHUB_TOKEN }}
+      #    benchmark-data-dir-path: "docs/dev/bench"

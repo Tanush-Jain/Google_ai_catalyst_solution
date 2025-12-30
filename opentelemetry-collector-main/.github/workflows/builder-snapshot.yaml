@@ -1,0 +1,95 @@
+name: Builder - Snapshot build
+on:
+  push:
+    branches: [main]
+
+  # on PRs touching the builder
+  pull_request:
+    branches: [main]
+    paths:
+      - "cmd/builder/**"
+
+permissions:
+  contents: read
+
+env:
+  # renovate: datasource=github-tags depName=goreleaser-pro packageName=goreleaser/goreleaser-pro
+  GORELEASER_PRO_VERSION: v2.11.1
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'open-telemetry' }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          path: .core
+
+      - name: Pull the latest releases repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          path: opentelemetry-collector-releases
+          repository: open-telemetry/opentelemetry-collector-releases
+
+      - name: Copy release files
+        run: cp -R ./opentelemetry-collector-releases/cmd/builder/. ./.core/cmd/builder/
+
+      - uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - uses: anchore/sbom-action/download-syft@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: amd64, arm64,ppc64le
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Cache Go
+        id: go-cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          path: |
+            ~/go/bin
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Check GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser-pro
+          version: ${{ env.GORELEASER_PRO_VERSION }}
+          args: check --verbose -f .core/cmd/builder/.goreleaser.yaml
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser-pro
+          version: ${{ env.GORELEASER_PRO_VERSION }}
+          args: --snapshot --clean -f .core/cmd/builder/.goreleaser.yaml --skip sign
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_YES: false
+
+        # Only create an issue if the workflows fails on push to main branch
+      - name: File an issue if the workflow failed
+        if: failure() && github.ref == 'refs/heads/main'
+        run: |
+          template=$(cat <<'END'
+          [Link to job log](%s)
+          END
+          )
+          job_url="$(gh run view ${{ github.run_id }} -R ${{ github.repository }} --json jobs -q '.jobs[] | select(.name == "snapshot") | .url')"
+          body="$(printf "$template" "$job_url")"
+          gh issue create -R ${{ github.repository }} -t 'OCB snapshot workflow failed' -b "$body" -l 'ci-cd' -l 'area:builder'
+        env:
+          GH_TOKEN: ${{ github.token }}

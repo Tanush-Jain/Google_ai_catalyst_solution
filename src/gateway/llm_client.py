@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 from src.gateway.config import get_settings
 from src.utils.token_counter import estimate_token_count
+from src.gateway.telemetry import telemetry_manager
+from opentelemetry.trace import Status, StatusCode, get_current_span
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +144,26 @@ class GeminiClient:
             input_tokens = estimate_token_count(prompt)
             output_tokens = estimate_token_count(response_text)
 
+            # Record DEV metrics
+            telemetry_manager.record_llm_metrics(
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model="gemini-mock",
+                status="success"
+            )
+
+            # Structured logging
+            telemetry_manager.log_structured(
+                "INFO", 
+                "Mock LLM response generated",
+                model="gemini-mock",
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                environment="development"
+            )
+
             return LLMResponse(
                 text=response_text,
                 input_tokens=input_tokens,
@@ -156,6 +178,25 @@ class GeminiClient:
             latency_ms = (time.time() - start_time) * 1000
             input_tokens = estimate_token_count(prompt)
             
+            # Record Error Metrics
+            telemetry_manager.record_llm_metrics(
+                llm_failure=True,
+                error_type="initialization_failure",
+                latency_ms=latency_ms,
+                model="uninitialized",
+                status="error"
+            )
+
+            # Structured logging
+            telemetry_manager.log_structured(
+                "ERROR", 
+                "LLM client not initialized",
+                error_type="initialization_failure",
+                latency_ms=latency_ms,
+                model="uninitialized",
+                environment="production"
+            )
+
             return LLMResponse(
                 text="Error: Vertex AI model not accessible for this project",
                 input_tokens=input_tokens,
@@ -166,33 +207,67 @@ class GeminiClient:
             )
 
         # PROD MODE (REAL GEMINI)
+        max_tokens = max_tokens or getattr(self.settings, 'MAX_TOKENS', 2048)
+        temperature = temperature or getattr(self.settings, 'TEMPERATURE', 0.7)
+        region = self._validate_region(getattr(self.settings, 'VERTEX_LOCATION', 'us-central1'))
+
         try:
-            max_tokens = max_tokens or getattr(self.settings, 'MAX_TOKENS', 2048)
-            temperature = temperature or getattr(self.settings, 'TEMPERATURE', 0.7)
+            # Trace LLM Call with proper span attributes
+            with telemetry_manager.tracer.start_as_current_span("vertexai.generate_content") as span:
+                span.set_attribute("model_name", self.selected_model)
+                span.set_attribute("region", region)
+                span.set_attribute("max_tokens", max_tokens)
+                span.set_attribute("temperature", temperature)
+                span.set_attribute("prompt_length", len(prompt))
+                
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config={
+                        "max_output_tokens": max_tokens,
+                        "temperature": temperature,
+                    },
+                )
+                span.set_status(Status(StatusCode.OK))
+                span.set_attribute("success", True)
+                
+                latency_ms = (time.time() - start_time) * 1000
+                response_text = response.text if hasattr(response, "text") else str(response)
 
-            response = self.model.generate_content(
-                prompt,
-                generation_config={
-                    "max_output_tokens": max_tokens,
-                    "temperature": temperature,
-                },
-            )
+                input_tokens = estimate_token_count(prompt)
+                output_tokens = estimate_token_count(response_text)
+                cost_estimate = self._calculate_cost_estimate(input_tokens, output_tokens)
 
-            latency_ms = (time.time() - start_time) * 1000
-            response_text = response.text if hasattr(response, "text") else str(response)
+                # Record Success Metrics
+                telemetry_manager.record_llm_metrics(
+                    latency_ms=latency_ms,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_estimate=cost_estimate,
+                    model=self.selected_model,
+                    status="success"
+                )
 
-            input_tokens = estimate_token_count(prompt)
-            output_tokens = estimate_token_count(response_text)
-            cost_estimate = self._calculate_cost_estimate(input_tokens, output_tokens)
+                # Structured logging for success
+                telemetry_manager.log_structured(
+                    "INFO", 
+                    "LLM request completed successfully",
+                    model=self.selected_model,
+                    region=region,
+                    latency_ms=latency_ms,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_estimate=cost_estimate,
+                    success=True
+                )
 
-            return LLMResponse(
-                text=response_text,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                latency_ms=latency_ms,
-                cost_estimate=cost_estimate,
-                model=self.selected_model,
-            )
+                return LLMResponse(
+                    text=response_text,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    latency_ms=latency_ms,
+                    cost_estimate=cost_estimate,
+                    model=self.selected_model,
+                )
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
@@ -201,6 +276,27 @@ class GeminiClient:
             latency_ms = (time.time() - start_time) * 1000
             input_tokens = estimate_token_count(prompt)
             
+            # Record Failure Metrics
+            telemetry_manager.record_llm_metrics(
+                llm_failure=True,
+                error_type=str(type(e).__name__),
+                latency_ms=latency_ms,
+                model=self.selected_model,
+                status="error"
+            )
+
+            # Structured logging for error
+            telemetry_manager.log_structured(
+                "ERROR", 
+                "LLM request failed",
+                model=self.selected_model,
+                region=region,
+                latency_ms=latency_ms,
+                error_type=str(type(e).__name__),
+                error_message=str(e),
+                success=False
+            )
+
             return LLMResponse(
                 text="Error: Vertex AI model not accessible for this project",
                 input_tokens=input_tokens,
