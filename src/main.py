@@ -101,12 +101,16 @@ if __name__ == "__main__":
     Main entry point when running: python src/main.py
     
     This provides a clean, production-style way to start the application.
+    Cloud Run will inject PORT environment variable.
     """
+    import os
     settings = get_settings()
+    
+    port = int(os.environ.get("PORT", 8080))
     
     logger.info("Starting SentinelLLM Gateway via uvicorn...")
     logger.info(f"Host: 0.0.0.0")
-    logger.info(f"Port: 8080")
+    logger.info(f"Port: {port}")
     logger.info(f"Reload: {settings.DEBUG}")
     logger.info(f"Log Level: {'debug' if settings.DEBUG else 'info'}")
     
@@ -114,7 +118,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "src.main:app",
         host="0.0.0.0",
-        port=8080,
+        port=port,
         reload=settings.DEBUG,
         log_level="debug" if settings.DEBUG else "info",
         access_log=True
